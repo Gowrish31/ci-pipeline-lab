@@ -1,0 +1,10 @@
+{
+  "name": "ci-pipeline-lab-app",
+  "version": "1.0.0",
+  "description": "Small health-check service for LU 4.10 CI/CD lab",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
