@@ -23,12 +23,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Prepare registry credentials and tags
+        id: prep
+        run: |
+          USER_NAME="${{ secrets.DOCKERHUB_USER }}"
+          if [ -n "$USER_NAME" ]; then
+            REGISTRY="docker.io"
+            OWNER=$(echo "$USER_NAME" | tr '[:upper:]' '[:lower:]')
+            PASS="${{ secrets.DOCKERHUB_TOKEN }}"
+          else
+            REGISTRY="ghcr.io"
+            OWNER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
+            PASS="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          IMAGE_TAG="$REGISTRY/$OWNER/app:${{ github.sha }}"
+          IMAGE_LATEST="$REGISTRY/$OWNER/app:latest"
+          
+          echo "registry=$REGISTRY" >> $GITHUB_OUTPUT
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "image_latest=$IMAGE_LATEST" >> $GITHUB_OUTPUT
+
       - name: Log in to Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.DOCKERHUB_USER != '' && 'docker.io' || 'ghcr.io' }}
-          username: ${{ secrets.DOCKERHUB_USER != '' && secrets.DOCKERHUB_USER || github.actor }}
-          password: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          registry: ${{ steps.prep.outputs.registry }}
+          username: ${{ steps.prep.outputs.owner }}
+          password: ${{ steps.prep.outputs.pass }}
 
       - name: Build and push image
         uses: docker/build-push-action@v5
@@ -36,8 +58,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USER != '' && format('{0}/app:{1}', secrets.DOCKERHUB_USER, github.sha) || format('ghcr.io/{0}/app:{1}', github.actor, github.sha) }}
-            ${{ secrets.DOCKERHUB_USER != '' && format('{0}/app:latest', secrets.DOCKERHUB_USER) || format('ghcr.io/{0}/app:latest', github.actor) }}
+            ${{ steps.prep.outputs.image_tag }}
+            ${{ steps.prep.outputs.image_latest }}
 
   deploy:
     needs: build
@@ -46,20 +68,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Prepare registry credentials and tags
+        id: prep
+        run: |
+          USER_NAME="${{ secrets.DOCKERHUB_USER }}"
+          if [ -n "$USER_NAME" ]; then
+            REGISTRY="docker.io"
+            OWNER=$(echo "$USER_NAME" | tr '[:upper:]' '[:lower:]')
+            PASS="${{ secrets.DOCKERHUB_TOKEN }}"
+          else
+            REGISTRY="ghcr.io"
+            OWNER=$(echo "${{ github.actor }}" | tr '[:upper:]' '[:lower:]')
+            PASS="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          IMAGE_TAG="$REGISTRY/$OWNER/app:${{ github.sha }}"
+          
+          echo "registry=$REGISTRY" >> $GITHUB_OUTPUT
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "pass=$PASS" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
       - name: Log in to Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ secrets.DOCKERHUB_USER != '' && 'docker.io' || 'ghcr.io' }}
-          username: ${{ secrets.DOCKERHUB_USER != '' && secrets.DOCKERHUB_USER || github.actor }}
-          password: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          registry: ${{ steps.prep.outputs.registry }}
+          username: ${{ steps.prep.outputs.owner }}
+          password: ${{ steps.prep.outputs.pass }}
 
       - name: Deploy with Docker Compose
         env:
-          IMAGE: ${{ secrets.DOCKERHUB_USER != '' && format('{0}/app:{1}', secrets.DOCKERHUB_USER, github.sha) || format('ghcr.io/{0}/app:{1}', github.actor, github.sha) }}
+          IMAGE: ${{ steps.prep.outputs.image_tag }}
         run: |
           docker compose pull
           docker compose up -d
           sleep 5
           curl -f http://localhost:8080/health
+
 
 
